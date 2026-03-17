@@ -135,12 +135,6 @@ def create_appointment(payload: dict):
     return {"ok": True}
 
 
-@app.delete("/appointments/{appointment_id}")
-def delete_appointment(appointment_id: str):
-    db.appointments.delete_one({"_id": ObjectId(appointment_id)})
-    return {"ok": True}
-
-
 @app.get("/appointments/pending-reminders")
 def get_pending_reminders():
     now = datetime.now()
@@ -158,6 +152,12 @@ def get_pending_reminders():
             pending.append(normalize(item))
 
     return pending
+
+
+@app.delete("/appointments/{appointment_id}")
+def delete_appointment(appointment_id: str):
+    db.appointments.delete_one({"_id": ObjectId(appointment_id)})
+    return {"ok": True}
 
 
 # FINANCEIRO
