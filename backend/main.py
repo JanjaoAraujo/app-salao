@@ -76,6 +76,14 @@ def parse_appointment_datetime(item):
 def root():
     return {"status": "ok"}
 
+@app.get("/debug-now")
+def debug_now():
+    now = now_br()
+    return {
+        "now_iso": now.isoformat(),
+        "today": str(now.date()),
+        "timezone": "America/Fortaleza"
+    }
 
 # CLIENTES
 @app.get("/clients")
