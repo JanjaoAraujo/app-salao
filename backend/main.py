@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 import os
 from urllib.parse import quote_plus
@@ -21,18 +21,47 @@ MONGODB_URI = os.environ.get("MONGODB_URI") or "COLE_SUA_STRING_MONGODB_AQUI"
 client = MongoClient(MONGODB_URI)
 db = client["salao_pro"]
 
+
 def normalize(doc):
     if not doc:
         return doc
     doc["_id"] = str(doc["_id"])
     return doc
 
+
 def normalize_many(items):
     return [normalize(x) for x in items]
+
+
+def parse_appointment_datetime(item):
+    datetime_value = item.get("datetime")
+    if datetime_value:
+        try:
+            return datetime.fromisoformat(datetime_value)
+        except:
+            pass
+
+    date_value = item.get("date")
+    time_value = item.get("time")
+
+    if date_value and time_value:
+        try:
+            return datetime.fromisoformat(f"{date_value}T{time_value}")
+        except:
+            pass
+
+        try:
+            return datetime.strptime(f"{date_value} {time_value}", "%Y-%m-%d %H:%M")
+        except:
+            pass
+
+    return None
+
 
 @app.get("/")
 def root():
     return {"status": "ok"}
+
 
 # CLIENTES
 @app.get("/clients")
@@ -40,16 +69,19 @@ def get_clients():
     items = list(db.clients.find().sort("created_at", -1))
     return normalize_many(items)
 
+
 @app.post("/clients")
 def create_client(payload: dict):
     payload["created_at"] = datetime.now()
     db.clients.insert_one(payload)
     return {"ok": True}
 
+
 @app.delete("/clients/{client_id}")
 def delete_client(client_id: str):
     db.clients.delete_one({"_id": ObjectId(client_id)})
     return {"ok": True}
+
 
 # SERVIÇOS
 @app.get("/services")
@@ -57,38 +89,14 @@ def get_services():
     items = list(db.services.find().sort("created_at", -1))
     return normalize_many(items)
 
+
 @app.post("/services")
 def create_service(payload: dict):
     payload["created_at"] = datetime.now()
     db.services.insert_one(payload)
     return {"ok": True}
 
-@app.delete("/services/{service_id}")
-def delete_service(service_id: str):
-    db.services.delete_one({"_id": ObjectId(service_id)})
-    return {"ok": True}
 
-# AGENDAMENTOS
-@app.get("/appointments")
-def get_appointments():
-    items = list(db.appointments.find().sort("created_at", -1))
-    return normalize_many(items)
-
-@app.post("/appointments")
-def create_appointment(payload: dict):
-    payload["created_at"] = datetime.now()
-    payload["reminder_sent"] = False
-    payload["reminder_sent_at"] = None
-    payload["notification_sent"] = False
-    payload["notification_sent_at"] = None
-    payload["status"] = "agendado"
-    db.appointments.insert_one(payload)
-    return {"ok": True}
-
-@app.delete("/appointments/{appointment_id}")
-def delete_appointment(appointment_id: str):
-    db.appointments.delete_one({"_id": ObjectId(appointment_id)})
-    return {"ok": True}
 @app.put("/services/{service_id}")
 def update_service(service_id: str, payload: dict):
     db.services.update_one(
@@ -101,10 +109,56 @@ def update_service(service_id: str, payload: dict):
     )
     return {"ok": True}
 
+
 @app.delete("/services/{service_id}")
 def delete_service(service_id: str):
     db.services.delete_one({"_id": ObjectId(service_id)})
     return {"ok": True}
+
+
+# AGENDAMENTOS
+@app.get("/appointments")
+def get_appointments():
+    items = list(db.appointments.find().sort("created_at", -1))
+    return normalize_many(items)
+
+
+@app.post("/appointments")
+def create_appointment(payload: dict):
+    payload["created_at"] = datetime.now()
+    payload["reminder_sent"] = False
+    payload["reminder_sent_at"] = None
+    payload["notification_sent"] = False
+    payload["notification_sent_at"] = None
+    payload["status"] = "agendado"
+    db.appointments.insert_one(payload)
+    return {"ok": True}
+
+
+@app.delete("/appointments/{appointment_id}")
+def delete_appointment(appointment_id: str):
+    db.appointments.delete_one({"_id": ObjectId(appointment_id)})
+    return {"ok": True}
+
+
+@app.get("/appointments/pending-reminders")
+def get_pending_reminders():
+    now = datetime.now()
+    next_24h = now + timedelta(hours=24)
+
+    pending = []
+
+    for item in db.appointments.find({"reminder_sent": False}):
+        appointment_datetime = parse_appointment_datetime(item)
+
+        if not appointment_datetime:
+            continue
+
+        if now <= appointment_datetime <= next_24h:
+            pending.append(normalize(item))
+
+    return pending
+
 
 # FINANCEIRO
 @app.get("/finance")
@@ -112,16 +166,19 @@ def get_finance():
     items = list(db.finance.find().sort("created_at", -1))
     return normalize_many(items)
 
+
 @app.post("/finance")
 def create_finance(payload: dict):
     payload["created_at"] = datetime.now()
     db.finance.insert_one(payload)
     return {"ok": True}
 
+
 @app.delete("/finance/{finance_id}")
 def delete_finance(finance_id: str):
     db.finance.delete_one({"_id": ObjectId(finance_id)})
     return {"ok": True}
+
 
 @app.get("/finance/summary")
 def finance_summary():
@@ -139,6 +196,7 @@ def finance_summary():
         "balance": income - expense,
     }
 
+
 # CONFIG
 @app.get("/settings")
 def get_settings():
@@ -150,12 +208,14 @@ def get_settings():
         "business_name": item.get("business_name", ""),
     }
 
+
 @app.post("/settings")
 def save_settings(payload: dict):
     db.settings.delete_many({})
     payload["updated_at"] = datetime.now()
     db.settings.insert_one(payload)
     return {"ok": True}
+
 
 # DASHBOARD
 @app.get("/dashboard")
