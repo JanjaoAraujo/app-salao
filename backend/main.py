@@ -153,6 +153,16 @@ def get_pending_reminders():
 
     return pending
 
+@app.put("/appointments/{appointment_id}/mark-reminder-sent")
+def mark_reminder_sent(appointment_id: str):
+    db.appointments.update_one(
+        {"_id": ObjectId(appointment_id)},
+        {"$set": {
+            "reminder_sent": True,
+            "reminder_sent_at": datetime.now()
+        }}
+    )
+    return {"ok": True}
 
 @app.delete("/appointments/{appointment_id}")
 def delete_appointment(appointment_id: str):
