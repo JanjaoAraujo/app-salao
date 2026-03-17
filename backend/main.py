@@ -46,12 +46,23 @@ def parse_appointment_datetime(item):
 
     if date_value and time_value:
         try:
-            return datetime.fromisoformat(f"{date_value}T{time_value}")
+            date_str = str(date_value).strip()
+            time_str = str(time_value).strip()
+
+            if len(time_str) == 5:
+                time_str = f"{time_str}:00"
+
+            return datetime.fromisoformat(f"{date_str}T{time_str}")
         except:
             pass
 
         try:
             return datetime.strptime(f"{date_value} {time_value}", "%Y-%m-%d %H:%M")
+        except:
+            pass
+
+        try:
+            return datetime.strptime(f"{date_value} {time_value}", "%d/%m/%Y %H:%M")
         except:
             pass
 
