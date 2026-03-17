@@ -77,6 +77,11 @@ def get_appointments():
 @app.post("/appointments")
 def create_appointment(payload: dict):
     payload["created_at"] = datetime.now()
+    payload["reminder_sent"] = False
+    payload["reminder_sent_at"] = None
+    payload["notification_sent"] = False
+    payload["notification_sent_at"] = None
+    payload["status"] = "agendado"
     db.appointments.insert_one(payload)
     return {"ok": True}
 
