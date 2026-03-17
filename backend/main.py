@@ -148,18 +148,19 @@ def create_appointment(payload: dict):
 
 @app.get("/appointments/pending-reminders")
 def get_pending_reminders():
-    now = datetime.now()
-    next_24h = now + timedelta(hours=24)
+    today = datetime.now().date()
 
     pending = []
 
     for item in db.appointments.find({"reminder_sent": False}):
-        appointment_datetime = parse_appointment_datetime(item)
+        date_value = item.get("date")
 
-        if not appointment_datetime:
+        try:
+            appointment_date = datetime.fromisoformat(date_value).date()
+        except:
             continue
 
-        if now <= appointment_datetime <= next_24h:
+        if appointment_date == today:
             pending.append(normalize(item))
 
     return pending
