@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 from bson import ObjectId
+from zoneinfo import ZoneInfo
 import os
 from urllib.parse import quote_plus
 
@@ -21,6 +22,8 @@ MONGODB_URI = os.environ.get("MONGODB_URI") or "COLE_SUA_STRING_MONGODB_AQUI"
 client = MongoClient(MONGODB_URI)
 db = client["salao_pro"]
 
+BRAZIL_TZ = ZoneInfo("America/Fortaleza")
+
 
 def normalize(doc):
     if not doc:
@@ -33,11 +36,20 @@ def normalize_many(items):
     return [normalize(x) for x in items]
 
 
+def now_br():
+    return datetime.now(BRAZIL_TZ)
+
+
 def parse_appointment_datetime(item):
     datetime_value = item.get("datetime")
     if datetime_value:
         try:
-            return datetime.fromisoformat(datetime_value)
+            dt = datetime.fromisoformat(str(datetime_value).strip())
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=BRAZIL_TZ)
+            else:
+                dt = dt.astimezone(BRAZIL_TZ)
+            return dt
         except:
             pass
 
@@ -52,17 +64,8 @@ def parse_appointment_datetime(item):
             if len(time_str) == 5:
                 time_str = f"{time_str}:00"
 
-            return datetime.fromisoformat(f"{date_str}T{time_str}")
-        except:
-            pass
-
-        try:
-            return datetime.strptime(f"{date_value} {time_value}", "%Y-%m-%d %H:%M")
-        except:
-            pass
-
-        try:
-            return datetime.strptime(f"{date_value} {time_value}", "%d/%m/%Y %H:%M")
+            dt = datetime.fromisoformat(f"{date_str}T{time_str}")
+            return dt.replace(tzinfo=BRAZIL_TZ)
         except:
             pass
 
@@ -83,7 +86,7 @@ def get_clients():
 
 @app.post("/clients")
 def create_client(payload: dict):
-    payload["created_at"] = datetime.now()
+    payload["created_at"] = now_br().isoformat()
     db.clients.insert_one(payload)
     return {"ok": True}
 
@@ -103,7 +106,7 @@ def get_services():
 
 @app.post("/services")
 def create_service(payload: dict):
-    payload["created_at"] = datetime.now()
+    payload["created_at"] = now_br().isoformat()
     db.services.insert_one(payload)
     return {"ok": True}
 
@@ -136,7 +139,7 @@ def get_appointments():
 
 @app.post("/appointments")
 def create_appointment(payload: dict):
-    payload["created_at"] = datetime.now()
+    payload["created_at"] = now_br().isoformat()
     payload["reminder_sent"] = False
     payload["reminder_sent_at"] = None
     payload["notification_sent"] = False
@@ -148,15 +151,18 @@ def create_appointment(payload: dict):
 
 @app.get("/appointments/pending-reminders")
 def get_pending_reminders():
-    today = datetime.now().date()
+    now = now_br()
+    today = now.date()
 
     pending = []
 
     for item in db.appointments.find({"reminder_sent": False}):
         date_value = item.get("date")
+        if not date_value:
+            continue
 
         try:
-            appointment_date = datetime.fromisoformat(date_value).date()
+            appointment_date = datetime.fromisoformat(str(date_value)).date()
         except:
             continue
 
@@ -165,16 +171,18 @@ def get_pending_reminders():
 
     return pending
 
+
 @app.put("/appointments/{appointment_id}/mark-reminder-sent")
 def mark_reminder_sent(appointment_id: str):
     db.appointments.update_one(
         {"_id": ObjectId(appointment_id)},
         {"$set": {
             "reminder_sent": True,
-            "reminder_sent_at": datetime.now()
+            "reminder_sent_at": now_br().isoformat()
         }}
     )
     return {"ok": True}
+
 
 @app.delete("/appointments/{appointment_id}")
 def delete_appointment(appointment_id: str):
@@ -191,7 +199,7 @@ def get_finance():
 
 @app.post("/finance")
 def create_finance(payload: dict):
-    payload["created_at"] = datetime.now()
+    payload["created_at"] = now_br().isoformat()
     db.finance.insert_one(payload)
     return {"ok": True}
 
@@ -234,7 +242,7 @@ def get_settings():
 @app.post("/settings")
 def save_settings(payload: dict):
     db.settings.delete_many({})
-    payload["updated_at"] = datetime.now()
+    payload["updated_at"] = now_br().isoformat()
     db.settings.insert_one(payload)
     return {"ok": True}
 
@@ -242,9 +250,9 @@ def save_settings(payload: dict):
 # DASHBOARD
 @app.get("/dashboard")
 def dashboard():
-    today = datetime.now().date()
-    month = datetime.now().month
-    year = datetime.now().year
+    today = now_br().date()
+    month = now_br().month
+    year = now_br().year
 
     today_revenue = 0.0
     month_revenue = 0.0
@@ -254,11 +262,21 @@ def dashboard():
         amount = float(item.get("amount", 0) or 0)
         created_at = item.get("created_at")
         is_income = item.get("type", "entrada") != "saida"
+
         if created_at and is_income:
-            if created_at.month == month and created_at.year == year:
-                month_revenue += amount
-            if created_at.date() == today:
-                today_revenue += amount
+            try:
+                created_dt = datetime.fromisoformat(str(created_at))
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=BRAZIL_TZ)
+                else:
+                    created_dt = created_dt.astimezone(BRAZIL_TZ)
+
+                if created_dt.month == month and created_dt.year == year:
+                    month_revenue += amount
+                if created_dt.date() == today:
+                    today_revenue += amount
+            except:
+                pass
 
     for item in db.appointments.find():
         if item.get("date") == str(today):
