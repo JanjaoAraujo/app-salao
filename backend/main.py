@@ -191,6 +191,38 @@ def mark_reminder_sent(appointment_id: str):
     )
     return {"ok": True}
 
+@app.post("/appointments/process-reminders")
+def process_reminders():
+    now = now_br()
+    today = now.date()
+
+    processed = []
+
+    for item in db.appointments.find({"reminder_sent": False}):
+        date_value = item.get("date")
+        if not date_value:
+            continue
+
+        try:
+            appointment_date = datetime.fromisoformat(str(date_value)).date()
+        except:
+            continue
+
+        if appointment_date == today:
+            db.appointments.update_one(
+                {"_id": item["_id"]},
+                {"$set": {
+                    "reminder_sent": True,
+                    "reminder_sent_at": now.isoformat()
+                }}
+            )
+            processed.append(str(item["_id"]))
+
+    return {
+        "ok": True,
+        "processed_count": len(processed),
+        "processed_ids": processed
+    }
 
 @app.delete("/appointments/{appointment_id}")
 def delete_appointment(appointment_id: str):
